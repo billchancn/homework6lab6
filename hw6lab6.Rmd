@@ -1,0 +1,125 @@
+---
+title: "hw6lab6"
+author: "Chan, Kim Fai"
+date: "10/28/2021"
+output: html_document
+---
+
+```{r}
+setwd("~/Desktop/jeff's documents/Master of Economics in CCNY/ECONOMETRICS ECO B2000/homework 6 lab 6")
+load("Household_Pulse_data.RData")
+attach(Household_Pulse_data)
+summary(Household_Pulse_data)
+
+
+#FIRST I JUST RUN THE CODE IN LAB 6 AND SEE WHAT HAPPENS THEN TRY REVISED IT TO FIT MINE.
+summary(Household_Pulse_data$vaxx)
+summary(as.factor(Household_Pulse_data$vaxx))
+
+vaxx_factor <- as.factor(Household_Pulse_data$vaxx)
+levels(vaxx_factor)
+```
+model_logit1 <- glm(vaxx ~ EEDUC,
+            family = binomial, data = Household_Pulse_data)
+
+summary(model_logit1)
+```{r}
+Household_Pulse_data$vaxx <- (Household_Pulse_data$RECVDVACC == "yes got vaxx")
+is.na(Household_Pulse_data$vaxx) <- which(Household_Pulse_data$RECVDVACC == "NA") 
+
+table(Household_Pulse_data$vaxx,Household_Pulse_data$EEDUC)
+
+pick_use1 <- (Household_Pulse_data$REGION == "Northeast") # just for example!
+dat_use1 <- subset(Household_Pulse_data, pick_use1)
+
+# and to be finicky, might want to use this for factors after subsetting in case some get lost
+dat_use1$RECVDVACC <- droplevels(dat_use1$RECVDVACC) 
+
+model_logit2 <- glm(vaxx ~ EEDUC + MS + RRACE + RHISPANIC + GENID_DESCRIBE,
+            family = binomial, data = dat_use1)
+summary(model_logit2)
+
+#I JUST REMOVED THE "TBIRTH_YEAR" BECAUSE I DIDN'T SEE THIS VARIABLE IN THE DATASET, APPRECIATE IF PROFESSOR EXPLAIN HOW IT WORKS. HAHA
+```
+
+```{r}
+###I CHOOSE THE SOUTH REGION AS MY TARGET:
+Household_Pulse_data$vaxx <- (Household_Pulse_data$RECVDVACC == "yes got vaxx")
+is.na(Household_Pulse_data$vaxx) <- which(Household_Pulse_data$RECVDVACC == "NA") 
+
+table(Household_Pulse_data$vaxx,Household_Pulse_data$EEDUC)
+
+pick_use1 <- (Household_Pulse_data$REGION == "South") 
+dat_use1 <- subset(Household_Pulse_data, pick_use1)
+
+dat_use1$RECVDVACC <- droplevels(dat_use1$RECVDVACC) 
+
+model_logit3 <- glm(vaxx ~ HADCOVID + INCOME + Works_onsite + EEDUC + MS + RRACE + RHISPANIC + GENID_DESCRIBE ,
+            family = binomial, data = dat_use1)
+summary(model_logit3)
+
+#I CHOOSE THE VARIABLES: IF THE TARGET GOT COVID OR NOT, INCOME, WORK REMOTE OR NOT, EDUCATION LEVEL, ALSO SOME VARIABLE AS SUGGESTED BY LAB 6 AND FOUND:
+#GOT COVID OR NOT, INCOME OVER 25K, WORK ONSITE OR NOT, RACE OTHER THAN BLACK HAS HIGH CORROLATION WITH vaxx.
+#HOWEVER, MARRY STATUS AND RACE OF BLACK SEEMS ARE NOT SIGNIFICAT.
+
+library(car)
+
+vif(model_logit3)
+
+
+#WE CAN SEE ALL THE GVIF OF THEM ARE LESS THAN 2. MEANS MULTICOLINEARITY IS SMALL.
+```
+
+
+#HL test
+library(generalhoslem)
+
+logitgof(dat_use1$RECVDVACC,fitted(model_logit3))
+or<-exp((summary(model_logit3))$coef[,'Estimate'])
+or
+
+#THROUGH THE HL TEST, WE CAN SEE HIGH EDUCATION, HIGHER INCOME, HAVE JOB, RACE OTHER THEN BLACK ARE MORE LIKELY TO TAKE VAXX; AND LOWER INCOME, LOWER EDUCATION, AND ALSO SOME DIVORCED AND SEPARATED SEEMS LESS LIKELY TO HAVE VAXX. IN EDUCATION LEVEL OR INCOME LEVEL HAS POSITIVE RELATIONSHIP WITH VAXX LEVEL.
+
+```{r}
+#PREDIT
+set.seed(11111)
+index<-sample(x=2,size=nrow(dat_use1),replace=TRUE,prob=c(0.7,0.3))
+train<-dat_use1[index==1,]
+test<-dat_use1[index==2,]
+dim(dat_use1)
+
+dim(train)
+
+dim(test)
+
+trainmodel<-glm(vaxx ~ HADCOVID + INCOME + Works_onsite + works_remote + EEDUC + MS + RRACE + RHISPANIC + GENID_DESCRIBE ,
+            family = binomial, data = dat_use1)
+prob<-predict(object=trainmodel,newdata=test,type="response")# use the trainmodel to predict
+pred<-cbind(test,prob)
+pred<-transform(pred,predict=ifelse(prob<=0.5,0,1)) #Reclassify the predicted probability values
+ta<-table(pred$vaxx,pred$predict) #Compare the actual and predicted values of the model
+ta
+
+sum_diag<-sum(diag(ta)) #the sum of the correct predict Numbers
+sum<-sum(ta) #the sum of predict Numbers
+sum_diag/sum #Prediction accuracy
+
+#THE PREDICTION ACCURACY IS:0.8779979
+```
+
+
+```{r}
+library(pROC)
+
+roc_curve<-roc(test$vaxx,prob)
+
+x<-1-roc_curve$specificities
+y<-roc_curve$sensitivities
+plot(x=x,y=y,xlim=c(0,1),ylim=c(0,1),xlab="1-specificity",
+ylab="sensitivity",main="ROC Curve",type="l",lwd=2)
+abline(a=0,b=1,col="grey")
+auc<-roc_curve$auc
+text(0.5,0.4,paste("AUC",round(auc,digits=2)),col="blue")
+
+#THE AUC=0.75, SO IN SOME LEVEL THE ACCURACY OF THIS MODEL IS ACCEPTABLE.
+```
